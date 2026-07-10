@@ -1,0 +1,9 @@
+{
+  "category": "violence",
+  "description": "暴力恐怖关键词",
+  "keywords": [
+    {"keyword": "杀人", "severity": "high"},
+    {"keyword": "恐怖袭击", "severity": "critical"},
+    {"keyword": "自杀", "severity": "high"}
+  ]
+}

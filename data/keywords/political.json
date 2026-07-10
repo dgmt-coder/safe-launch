@@ -1,0 +1,13 @@
+{
+  "category": "political",
+  "description": "政治敏感关键词",
+  "keywords": [
+    {"keyword": "台独", "severity": "critical"},
+    {"keyword": "港独", "severity": "critical"},
+    {"keyword": "藏独", "severity": "critical"},
+    {"keyword": "法轮功", "severity": "critical"},
+    {"keyword": "六四", "severity": "critical"},
+    {"keyword": "天安门", "severity": "high"},
+    {"keyword": "习近平", "severity": "high", "is_regex": false}
+  ]
+}

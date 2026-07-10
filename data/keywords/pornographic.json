@@ -1,0 +1,10 @@
+{
+  "category": "pornographic",
+  "description": "色情低俗关键词",
+  "keywords": [
+    {"keyword": "裸体", "severity": "high"},
+    {"keyword": "色情", "severity": "high"},
+    {"keyword": "成人内容", "severity": "high"},
+    {"keyword": "萝莉", "severity": "critical"}
+  ]
+}
