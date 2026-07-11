@@ -6,6 +6,7 @@ from pathlib import Path
 
 from litestar import Litestar
 from litestar.di import Provide
+from litestar.middleware.base import DefineMiddleware
 from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.template import TemplateConfig
 
@@ -16,7 +17,7 @@ from app.api.controllers.rag import RagController
 from app.api.controllers.text_review import TextReviewController
 from app.core.config.settings import settings
 from app.core.database import close_db_engine, get_db_session
-from app.core.exception_handlers import get_exception_handlers
+from app.core.exception_handlers import ExceptionHandlerMiddleware
 from app.core.redis import close_redis
 from app.web.controllers.pages import PagesController
 
@@ -39,7 +40,8 @@ def create_app() -> Litestar:
             directory=Path(__file__).parent / "web" / "templates",
             engine=JinjaTemplateEngine,
         ),
-        exception_handlers=get_exception_handlers(),
+        exception_handlers={},
+        middleware=[DefineMiddleware(ExceptionHandlerMiddleware)],
         on_startup=[_on_startup],
         on_shutdown=[_on_shutdown],
         debug=settings.DEBUG,

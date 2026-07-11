@@ -1,17 +1,12 @@
-"""统一异常处理器 — 记录异常堆栈，返回标准错误响应."""
+"""统一异常处理中间件 — 通过 ASGI middleware 捕获所有异常，记录堆栈，返回标准 JSON 响应."""
 
 from __future__ import annotations
 
+import json
 import logging
 import traceback
+from typing import Any
 
-from litestar import Request, Response
-from litestar.exceptions import (
-    HTTPException,
-    InternalServerException,
-    NotAuthorizedException,
-    ValidationException,
-)
 from litestar.status_codes import (
     HTTP_401_UNAUTHORIZED,
     HTTP_404_NOT_FOUND,
@@ -29,195 +24,113 @@ from app.core.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# 异常类型 → HTTP 状态码 + 错误码
+# 按 specificity 从高到低排列，优先匹配子类
+# ---------------------------------------------------------------------------
 
-def _format_exception(exc: Exception) -> str:
-    """格式化异常堆栈为字符串."""
+_EXCEPTION_MAP: list[tuple[type[Exception], int, str]] = [
+    # --- 业务异常 ---
+    (NotFoundException,          HTTP_404_NOT_FOUND,               "NOT_FOUND"),
+    (DegradedException,           HTTP_500_INTERNAL_SERVER_ERROR,   "DEGRADED"),
+    (ExternalServiceException,    HTTP_500_INTERNAL_SERVER_ERROR,   "EXTERNAL_SERVICE_ERROR"),
+    (ServiceException,            HTTP_500_INTERNAL_SERVER_ERROR,   "SERVICE_ERROR"),
+    (AppException,                HTTP_500_INTERNAL_SERVER_ERROR,   "APP_ERROR"),
+    # --- Litestar / HTTP ---
+    # ValidationException / NotAuthorizedException / HTTPException
+    # 这些由 Litestar 内置处理，middleware 不会拦到它们，保留映射以防万一
+]
+
+
+def _lookup(exc: Exception) -> tuple[int, str, str]:
+    """根据异常类型返回 (status_code, error_code, detail)."""
+    # 先尝试匹配已知业务异常
+    for exc_type, status, code in _EXCEPTION_MAP:
+        if isinstance(exc, exc_type):
+            return status, code, str(exc)
+
+    # 匹配 Litestar 内置异常（延迟导入，避免强制耦合）
+    try:
+        from litestar.exceptions import (
+            HTTPException,
+            NotAuthorizedException,
+            ValidationException,
+        )
+    except ImportError:  # pragma: no cover
+        pass
+    else:
+        if isinstance(exc, NotAuthorizedException):
+            return HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", exc.detail
+        if isinstance(exc, ValidationException):
+            return HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", str(exc.detail)
+        if isinstance(exc, HTTPException):
+            return exc.status_code, "HTTP_ERROR", exc.detail
+
+    # 兜底
+    return HTTP_500_INTERNAL_SERVER_ERROR, "UNHANDLED_ERROR", "服务器内部错误"
+
+
+def _format_traceback(exc: Exception) -> str:
     return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
 
-# --- 业务异常 ---
-
-def not_found_handler(request: Request, exc: NotFoundException) -> Response:
-    """资源不存在 — 404."""
-    logger.warning(
-        "资源不存在: %s | path=%s",
-        exc,
-        request.url.path,
-        extra={"exception_type": type(exc).__name__},
-    )
-    return Response(
-        content={"detail": str(exc), "code": "NOT_FOUND"},
-        status_code=HTTP_404_NOT_FOUND,
-        media_type="application/json",
-    )
-
-
-def service_exception_handler(request: Request, exc: ServiceException) -> Response:
-    """Service 层异常 — 500."""
-    logger.error(
-        "服务异常: %s\n%s",
-        exc,
-        _format_exception(exc),
-        extra={"exception_type": type(exc).__name__, "path": request.url.path},
-    )
-    return Response(
-        content={"detail": str(exc), "code": "SERVICE_ERROR"},
-        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-        media_type="application/json",
-    )
+def _log_exception(exc: Exception, path: str, status_code: int) -> None:
+    """按严重级别记录日志."""
+    extra: dict[str, Any] = {"exception_type": type(exc).__name__, "path": path}
+    if status_code >= 500:
+        logger.error(
+            "%s: %s\n%s",
+            type(exc).__name__,
+            exc,
+            _format_traceback(exc),
+            extra=extra,
+        )
+    else:
+        logger.warning(
+            "%s: %s | status=%d | path=%s",
+            type(exc).__name__,
+            exc,
+            status_code,
+            path,
+            extra=extra,
+        )
 
 
-def degraded_exception_handler(request: Request, exc: DegradedException) -> Response:
-    """降级异常 — 500."""
-    logger.error(
-        "审核降级失败: %s\n%s",
-        exc,
-        _format_exception(exc),
-        extra={"exception_type": type(exc).__name__},
-    )
-    return Response(
-        content={"detail": str(exc), "code": "DEGRADED"},
-        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-        media_type="application/json",
-    )
+class ExceptionHandlerMiddleware:
+    """ASGI 中间件 — 统一捕获异常，记录堆栈，返回 JSON 错误响应.
 
+    在 Litestar 中通过 ``DefineMiddleware`` 注册::
 
-def external_service_exception_handler(
-    request: Request, exc: ExternalServiceException
-) -> Response:
-    """外部服务异常 — 500."""
-    logger.error(
-        "外部服务调用失败: %s\n%s",
-        exc,
-        _format_exception(exc),
-        extra={"exception_type": type(exc).__name__, "path": request.url.path},
-    )
-    return Response(
-        content={"detail": str(exc), "code": "EXTERNAL_SERVICE_ERROR"},
-        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-        media_type="application/json",
-    )
+        DefineMiddleware(ExceptionHandlerMiddleware)
+    """
 
+    def __init__(self, app: Any) -> None:
+        self.app = app
 
-def app_exception_handler(request: Request, exc: AppException) -> Response:
-    """应用通用异常 — 500."""
-    logger.error(
-        "应用异常: %s\n%s",
-        exc,
-        _format_exception(exc),
-        extra={"exception_type": type(exc).__name__, "path": request.url.path},
-    )
-    return Response(
-        content={"detail": str(exc), "code": "APP_ERROR"},
-        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-        media_type="application/json",
-    )
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            if scope["type"] != "http":
+                raise
 
+            path = scope.get("path", "")
+            status_code, error_code, detail = _lookup(exc)
+            _log_exception(exc, path, status_code)
 
-# --- Litestar / HTTP 异常 ---
+            body = json.dumps(
+                {"detail": detail, "code": error_code},
+                ensure_ascii=False,
+            ).encode("utf-8")
 
-def http_exception_handler(request: Request, exc: HTTPException) -> Response:
-    """HTTP 异常（Litestar 内置）— 透传状态码."""
-    logger.warning(
-        "HTTP %s: %s | path=%s",
-        exc.status_code,
-        exc.detail,
-        request.url.path,
-        extra={"status_code": exc.status_code},
-    )
-    return Response(
-        content={"detail": exc.detail, "code": "HTTP_ERROR"},
-        status_code=exc.status_code,
-        media_type="application/json",
-    )
-
-
-def validation_exception_handler(request: Request, exc: ValidationException) -> Response:
-    """请求校验失败 — 422."""
-    logger.warning(
-        "参数校验失败: %s | path=%s",
-        exc.detail,
-        request.url.path,
-        extra={"path": request.url.path},
-    )
-    return Response(
-        content={"detail": str(exc.detail), "code": "VALIDATION_ERROR", "extra": exc.extra},
-        status_code=HTTP_422_UNPROCESSABLE_ENTITY,
-        media_type="application/json",
-    )
-
-
-def internal_server_error_handler(
-    request: Request, exc: InternalServerException
-) -> Response:
-    """内部服务器错误 — 500."""
-    logger.error(
-        "内部服务器错误: %s\n%s",
-        exc,
-        _format_exception(exc),
-        extra={"exception_type": type(exc).__name__, "path": request.url.path},
-    )
-    return Response(
-        content={"detail": "服务器内部错误", "code": "INTERNAL_ERROR"},
-        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-        media_type="application/json",
-    )
-
-
-def not_authorized_handler(request: Request, exc: NotAuthorizedException) -> Response:
-    """未授权 — 401."""
-    logger.warning(
-        "未授权访问: %s | path=%s",
-        exc.detail,
-        request.url.path,
-        extra={"path": request.url.path},
-    )
-    return Response(
-        content={"detail": exc.detail, "code": "UNAUTHORIZED"},
-        status_code=HTTP_401_UNAUTHORIZED,
-        media_type="application/json",
-    )
-
-
-# --- 兜底异常 ---
-
-def general_exception_handler(request: Request, exc: Exception) -> Response:
-    """兜底 — 捕获所有未处理的异常，记录完整堆栈."""
-    logger.error(
-        "未处理异常: %s: %s\n%s",
-        type(exc).__name__,
-        exc,
-        _format_exception(exc),
-        extra={"exception_type": type(exc).__name__, "path": request.url.path},
-    )
-    return Response(
-        content={"detail": "服务器内部错误", "code": "UNHANDLED_ERROR"},
-        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-        media_type="application/json",
-    )
-
-
-# --- 处理器映射 ---
-
-def get_exception_handlers() -> dict:
-    """返回异常处理器映射（按 specificity 从高到低排列）."""
-    handlers = {
-        # 业务异常
-        NotFoundException: not_found_handler,
-        DegradedException: degraded_exception_handler,
-        ExternalServiceException: external_service_exception_handler,
-        ServiceException: service_exception_handler,
-        AppException: app_exception_handler,
-        # HTTP / Litestar 异常
-        NotAuthorizedException: not_authorized_handler,
-        ValidationException: validation_exception_handler,
-        InternalServerException: internal_server_error_handler,
-        HTTPException: http_exception_handler,
-        # 兜底
-        Exception: general_exception_handler,
-    }
-    logger.info(
-        "异常处理器就绪: %d 个 handler 已注册",
-        len(handlers),
-    )
-    return handlers
+            await send({
+                "type": "http.response.start",
+                "status": status_code,
+                "headers": [
+                    (b"content-type", b"application/json; charset=utf-8"),
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": body,
+            })
