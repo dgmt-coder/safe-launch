@@ -14,10 +14,9 @@ from app.services.repos.review_repo import ReviewRepository
 
 
 class HistoryController(Controller):
-    path = "/api/v1/history"
     tags = ["History"]
 
-    @get("/records")
+    @get("/api/v1/history/records")
     async def list_records(
         self,
         db_session: AsyncSession,
@@ -58,7 +57,7 @@ class HistoryController(Controller):
             page_size=page_size,
         )
 
-    @get("/records/{record_id:uuid}")
+    @get("/api/v1/history/records/{record_id:uuid}")
     async def get_record(
         self,
         db_session: AsyncSession,
@@ -85,7 +84,7 @@ class HistoryController(Controller):
             updated_at=r.updated_at,
         )
 
-    @get("/stats")
+    @get("/api/v1/history/stats")
     async def get_stats(
         self,
         db_session: AsyncSession,

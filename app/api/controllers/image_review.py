@@ -14,10 +14,9 @@ from app.modules.image_review.validator import ImageValidator
 
 
 class ImageReviewController(Controller):
-    path = "/api/v1/review/image"
     tags = ["Image Review"]
 
-    @post()
+    @post("/api/v1/review/image")
     async def review_image(
         self,
         data: bytes,

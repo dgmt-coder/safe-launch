@@ -11,10 +11,9 @@ from app.services.review_service import ReviewService
 
 
 class TextReviewController(Controller):
-    path = "/api/v1/review/text"
     tags = ["Text Review"]
 
-    @post()
+    @post("/api/v1/review/text")
     async def review_text(
         self,
         data: ReviewCreate,
@@ -23,7 +22,7 @@ class TextReviewController(Controller):
         """单条文字内容审核."""
         return await review_service.create_review(data)
 
-    @post("/batch")
+    @post("/api/v1/review/text/batch")
     async def review_text_batch(
         self,
         data: list[ReviewCreate],
