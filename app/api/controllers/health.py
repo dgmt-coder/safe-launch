@@ -9,11 +9,10 @@ from app.schemas.health import HealthResponse
 
 
 class HealthController(Controller):
-    path = "/health"
     tags = ["Health"]
     include_in_schema = True
 
-    @get()
+    @get("/health")
     async def check(self) -> HealthResponse:
         """服务健康检查."""
         return HealthResponse(

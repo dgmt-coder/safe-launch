@@ -15,10 +15,9 @@ from app.schemas.rag import (
 
 
 class RagController(Controller):
-    path = "/api/v1/rag"
     tags = ["RAG"]
 
-    @post("/search")
+    @post("/api/v1/rag/search")
     async def search(self, data: RagSearchRequest) -> RagSearchResponse:
         """RAG 法规检索.
 
@@ -27,7 +26,7 @@ class RagController(Controller):
         """
         return RagSearchResponse(query=data.query)
 
-    @post("/documents")
+    @post("/api/v1/rag/documents")
     async def add_document(self, data: RagDocumentCreate) -> RagDocumentResponse:
         """添加知识库文档.
 
@@ -41,7 +40,7 @@ class RagController(Controller):
             created_at="",
         )
 
-    @delete("/documents/{document_id:str}")
+    @delete("/api/v1/rag/documents/{document_id:str}")
     async def delete_document(self, document_id: str) -> None:
         """删除知识库文档.
 

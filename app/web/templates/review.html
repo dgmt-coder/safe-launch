@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}文字审核 - safe-launch{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-2xl font-bold text-white mb-2">📝 文字内容审核</h1>
+    <p class="text-gray-400">提交文本内容进行多层审核检测</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <!-- 提交表单 -->
+    <div class="card">
+        <h2 class="text-lg font-semibold text-white mb-4">提交审核</h2>
+        <form id="review-form" class="space-y-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">审核维度</label>
+                <select id="review-dimension" class="select w-full" required>
+                    {% for d in dimensions %}
+                    <option value="{{ d.value }}">{{ d.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">内容类型</label>
+                <select id="content-type" class="select w-full">
+                    <option value="text">Text 文字</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">
+                    审核内容 <span class="text-gray-500">(最多 10000 字)</span>
+                </label>
+                <textarea id="review-content" class="input h-40 resize-y"
+                          placeholder="请输入待审核的文本内容..."
+                          maxlength="10000" required></textarea>
+                <div class="text-right text-xs text-gray-500 mt-1">
+                    <span id="char-count">0</span>/10000
+                </div>
+            </div>
+            <button type="submit" id="submit-btn" class="btn btn-primary w-full">
+                提交审核
+            </button>
+        </form>
+    </div>
+
+    <!-- 审核结果 -->
+    <div class="card" id="result-container" style="display:none;">
+        <h2 class="text-lg font-semibold text-white mb-4">审核结果</h2>
+        <div id="result-content"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const form = document.getElementById('review-form');
+    const content = document.getElementById('review-content');
+    const charCount = document.getElementById('char-count');
+    const submitBtn = document.getElementById('submit-btn');
+    const resultContainer = document.getElementById('result-container');
+    const resultContent = document.getElementById('result-content');
+
+    content.addEventListener('input', () => {
+        charCount.textContent = content.value.length;
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        submitBtn.disabled = true;
+        submitBtn.textContent = '审核中...';
+
+        try {
+            const resp = await fetch('/api/v1/review/text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: content.value,
+                    content_type: document.getElementById('content-type').value,
+                    review_dimension: document.getElementById('review-dimension').value,
+                }),
+            });
+
+            const data = await resp.json();
+            if (!resp.ok) {
+                showToast(data.detail || '审核请求失败', 'error');
+                return;
+            }
+
+            renderResult(data);
+            resultContainer.style.display = '';
+        } catch (err) {
+            showToast('网络错误: ' + err.message, 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '提交审核';
+        }
+    });
+
+    function renderResult(data) {
+        const riskColors = { low: 'text-green-400', medium: 'text-yellow-400', high: 'text-orange-400', critical: 'text-red-400' };
+        const riskColor = riskColors[data.risk_level] || 'text-gray-400';
+
+        let html = `
+            <div class="mb-6 p-4 rounded-lg bg-gray-700/50">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-lg font-semibold text-white">判定结果</span>
+                    <span class="px-3 py-1 rounded-full text-sm font-semibold ${riskColor} bg-gray-700">
+                        ${data.risk_level ? data.risk_level.toUpperCase() : 'N/A'}
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div><span class="text-gray-400">状态:</span> ${statusBadge(data.status)}</div>
+                    <div><span class="text-gray-400">违规:</span> ${data.is_violation ? '<span class="text-red-400">是</span>' : '<span class="text-green-400">否</span>'}</div>
+                    ${data.violation_type ? `<div><span class="text-gray-400">违规类型:</span> ${data.violation_type}</div>` : ''}
+                    ${data.confidence != null ? `<div><span class="text-gray-400">置信度:</span> ${(data.confidence * 100).toFixed(1)}%</div>` : ''}
+                    ${data.processing_time_ms ? `<div><span class="text-gray-400">耗时:</span> ${data.processing_time_ms}ms</div>` : ''}
+                </div>
+                ${data.reasoning ? `<div class="mt-2 text-sm text-gray-300"><span class="text-gray-400">理由:</span> ${escapeHtml(data.reasoning)}</div>` : ''}
+            </div>`;
+
+        if (data.layers && data.layers.length > 0) {
+            html += '<h3 class="text-sm font-semibold text-gray-400 mb-3">各层检测详情</h3>';
+            data.layers.forEach(layer => {
+                const icon = layer.layer === 'keyword' ? '🔍' : layer.layer === 'rag' ? '📚' : '🤖';
+                const name = layer.layer === 'keyword' ? 'L1 关键词匹配' : layer.layer === 'rag' ? 'L2 RAG 法规检索' : 'L3 LLM 判定';
+                const status = layer.is_violation === true ? '<span class="text-red-400">⚠ 违规</span>'
+                    : layer.is_violation === false ? '<span class="text-green-400">✓ 通过</span>'
+                    : '<span class="text-gray-400">- 未生效</span>';
+                html += `
+                    <div class="mb-3 p-3 rounded-lg bg-gray-700/30 border border-gray-700">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-sm font-semibold text-white">${icon} ${name}</span>
+                            <span class="text-xs">${status}</span>
+                        </div>
+                        ${layer.details && Object.keys(layer.details).length ? `<pre class="text-xs text-gray-400 mt-2 overflow-x-auto">${escapeHtml(JSON.stringify(layer.details, null, 2))}</pre>` : ''}
+                        ${layer.processing_time_ms ? `<div class="text-xs text-gray-500 mt-1">耗时: ${layer.processing_time_ms}ms</div>` : ''}
+                    </div>`;
+            });
+        }
+
+        if (data.degraded) {
+            html += `<div class="mt-2 p-2 rounded bg-yellow-900/30 text-yellow-400 text-sm">⚠ 降级运行，跳过层: ${data.skipped_layers.join(', ')}</div>`;
+        }
+
+        resultContent.innerHTML = html;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

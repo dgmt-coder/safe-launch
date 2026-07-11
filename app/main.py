@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from litestar import Litestar
 from litestar.di import Provide
+from litestar.plugins.jinja import JinjaTemplateEngine
+from litestar.template import TemplateConfig
 
 from app.api.controllers.health import HealthController
 from app.api.controllers.history import HistoryController
@@ -13,12 +17,14 @@ from app.api.controllers.text_review import TextReviewController
 from app.core.config.settings import settings
 from app.core.database import close_db_engine, get_db_session
 from app.core.redis import close_redis
+from app.web.controllers.pages import PagesController
 
 
 def create_app() -> Litestar:
     """创建 Litestar 应用实例 — 注册所有 Controller 和依赖注入."""
     return Litestar(
         route_handlers=[
+            PagesController,
             HealthController,
             TextReviewController,
             ImageReviewController,
@@ -28,6 +34,10 @@ def create_app() -> Litestar:
         dependencies={
             "db_session": Provide(get_db_session),
         },
+        template_config=TemplateConfig(
+            directory=Path(__file__).parent / "web" / "templates",
+            engine=JinjaTemplateEngine,
+        ),
         on_startup=[_on_startup],
         on_shutdown=[_on_shutdown],
         debug=settings.DEBUG,

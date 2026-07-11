@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}safe-launch 内容审核系统{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        risk: {
+                            low: '#22c55e',
+                            medium: '#eab308',
+                            high: '#f97316',
+                            critical: '#ef4444',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .risk-low { color: #22c55e; }
+        .risk-medium { color: #eab308; }
+        .risk-high { color: #f97316; }
+        .risk-critical { color: #ef4444; }
+        .bg-risk-low { background-color: #22c55e; }
+        .bg-risk-medium { background-color: #eab308; }
+        .bg-risk-high { background-color: #f97316; }
+        .bg-risk-critical { background-color: #ef4444; }
+        .nav-link { @apply px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700 transition-colors; }
+        .nav-link-active { @apply px-4 py-2 rounded-lg text-white bg-gray-700; }
+        .card { @apply bg-gray-800 rounded-xl border border-gray-700 p-6; }
+        .btn { @apply px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50; }
+        .btn-primary { @apply bg-indigo-600 text-white hover:bg-indigo-500; }
+        .btn-danger { @apply bg-red-600 text-white hover:bg-red-500; }
+        .input { @apply w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent; }
+        .select { @apply bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500; }
+        .badge { @apply inline-block px-2 py-1 rounded text-xs font-medium; }
+        .tr-row { @apply border-b border-gray-700 hover:bg-gray-750 cursor-pointer transition-colors; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <!-- 导航栏 -->
+    <nav class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-1">
+                    <a href="/" class="flex items-center space-x-2 text-lg font-bold text-white mr-6">
+                        <span class="text-indigo-400">🛡️</span>
+                        <span>safe-launch</span>
+                    </a>
+                    <a href="/" class="{{ 'nav-link-active' if request.url.path == '/' else 'nav-link' }}">仪表盘</a>
+                    <a href="/review" class="{{ 'nav-link-active' if request.url.path == '/review' else 'nav-link' }}">文字审核</a>
+                    <a href="/history" class="{{ 'nav-link-active' if request.url.path == '/history' else 'nav-link' }}">审核历史</a>
+                </div>
+                <div class="text-sm text-gray-400">
+                    v{{ request.app.state.settings.APP_VERSION if request.app.state.settings else '0.1.0' }}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Flash 消息容器 -->
+    <div id="toast" class="fixed top-4 right-4 z-50 hidden"></div>
+
+    <script>
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const colors = {
+                success: 'bg-green-600',
+                error: 'bg-red-600',
+                info: 'bg-indigo-600',
+            };
+            toast.className = `${colors[type] || colors.info} text-white px-6 py-3 rounded-lg shadow-lg`;
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function riskBadge(level) {
+            if (!level) return '<span class="text-gray-400">-</span>';
+            return `<span class="risk-${level} font-semibold">${level.toUpperCase()}</span>`;
+        }
+
+        function statusBadge(status) {
+            const labels = {
+                pending: '⏳ 待审核',
+                processing: '🔄 审核中',
+                completed: '✅ 已完成',
+                failed: '❌ 失败',
+                degraded: '⚠️ 降级',
+            };
+            return labels[status] || status;
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
