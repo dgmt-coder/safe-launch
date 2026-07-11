@@ -11,10 +11,9 @@ from app.services.repos.review_repo import ReviewRepository
 
 
 class PagesController(Controller):
-    path = "/"
     tags = ["Pages"]
 
-    @get()
+    @get("/")
     async def dashboard(self, db_session: AsyncSession) -> Template:
         """审核仪表盘."""
         repo = ReviewRepository(db_session)

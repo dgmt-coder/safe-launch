@@ -66,11 +66,10 @@ from app.services.{resource_singular} import {Resource}Service
 
 
 class {Resource}Controller(Controller):
-    path = "/{resource_name}"
     tags = ["{Resource}"]
     dependencies = {{"{resource_singular}_service": Provide({Resource}Service)}}
 
-    @post()
+    @post("/api/v1/{resource_name}")
     async def create(
         self,
         data: {Resource}Create,
@@ -79,7 +78,7 @@ class {Resource}Controller(Controller):
         """创建{中文名}"""
         return await {resource_singular}_service.create(data)
 
-    @get()
+    @get("/api/v1/{resource_name}")
     async def list(
         self,
         {resource_singular}_service: {Resource}Service,
@@ -89,7 +88,7 @@ class {Resource}Controller(Controller):
         """分页查询{中文名}列表"""
         return await {resource_singular}_service.list(page=page, page_size=page_size)
 
-    @get("/{{record_id:uuid}}")
+    @get("/api/v1/{resource_name}/{{record_id:uuid}}")
     async def get(
         self,
         record_id: UUID,
@@ -98,7 +97,7 @@ class {Resource}Controller(Controller):
         """查询单条{中文名}"""
         return await {resource_singular}_service.get(record_id)
 
-    @patch("/{{record_id:uuid}}")
+    @patch("/api/v1/{resource_name}/{{record_id:uuid}}")
     async def update(
         self,
         record_id: UUID,
@@ -108,7 +107,7 @@ class {Resource}Controller(Controller):
         """更新{中文名}"""
         return await {resource_singular}_service.update(record_id, data)
 
-    @delete("/{{record_id:uuid}}")
+    @delete("/api/v1/{resource_name}/{{record_id:uuid}}")
     async def delete(
         self,
         record_id: UUID,
@@ -177,6 +176,7 @@ app = Litestar(
 
 ## 关键规则
 
+- **路由定义**：Controller 类**不设置 `path`**，每个 `@get/@post/@patch/@delete` 装饰器写**完整绝对路径**（如 `/api/v1/resource`），便于 grep 定位和路由追踪
 - Controller 不写业务逻辑，全部委托给 Service
 - 所有 handler 必须是 `async def`
 - 路径参数用 `{name:uuid}` 类型约束，Litestar 自动转换
