@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 
 import httpx
 
 from app.core.config.settings import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class OpenAIEmbedding:

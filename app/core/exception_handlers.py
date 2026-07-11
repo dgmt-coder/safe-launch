@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import logging
 import traceback
 from typing import Any
 
+import structlog
 from litestar.status_codes import (
     HTTP_401_UNAUTHORIZED,
     HTTP_404_NOT_FOUND,
@@ -22,7 +22,7 @@ from app.core.exceptions import (
     ServiceException,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # 异常类型 → HTTP 状态码 + 错误码
@@ -76,23 +76,22 @@ def _format_traceback(exc: Exception) -> str:
 
 def _log_exception(exc: Exception, path: str, status_code: int) -> None:
     """按严重级别记录日志."""
-    extra: dict[str, Any] = {"exception_type": type(exc).__name__, "path": path}
     if status_code >= 500:
         logger.error(
-            "%s: %s\n%s",
-            type(exc).__name__,
-            exc,
-            _format_traceback(exc),
-            extra=extra,
+            "unhandled_exception",
+            exception_type=type(exc).__name__,
+            exception=str(exc),
+            traceback=_format_traceback(exc),
+            path=path,
+            status_code=status_code,
         )
     else:
         logger.warning(
-            "%s: %s | status=%d | path=%s",
-            type(exc).__name__,
-            exc,
-            status_code,
-            path,
-            extra=extra,
+            "http_exception",
+            exception_type=type(exc).__name__,
+            exception=str(exc),
+            path=path,
+            status_code=status_code,
         )
 
 

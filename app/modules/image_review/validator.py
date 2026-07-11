@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # 支持的格式及魔术字节签名
 ALLOWED_FORMATS = {"jpeg", "png", "webp", "gif"}

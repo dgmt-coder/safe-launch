@@ -50,16 +50,24 @@ def create_app() -> Litestar:
 
 async def _on_startup() -> None:
     """应用启动回调."""
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"safe-launch v{settings.APP_VERSION} 启动中 (env={settings.APP_ENV})")
-    logger.info(f"Debug: {settings.DEBUG}")
+    from app.core.logging import configure_logging
+
+    configure_logging(debug=settings.DEBUG)
+
+    import structlog
+    logger = structlog.get_logger(__name__)
+    logger.info(
+        "safe-launch 启动中",
+        version=settings.APP_VERSION,
+        env=settings.APP_ENV,
+        debug=settings.DEBUG,
+    )
 
 
 async def _on_shutdown() -> None:
     """应用关闭回调 — 清理连接池."""
-    import logging
-    logger = logging.getLogger(__name__)
+    import structlog
+    logger = structlog.get_logger(__name__)
     logger.info("safe-launch 正在关闭...")
     await close_db_engine()
     await close_redis()

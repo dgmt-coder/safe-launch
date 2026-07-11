@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+import structlog
 import time
 import uuid
 
@@ -20,7 +20,7 @@ from app.core.exceptions import DegradedException
 from app.schemas.review import LayerResult, ReviewCreate, ReviewResponse, ReviewStats
 from app.services.repos.review_repo import ReviewRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ReviewService:

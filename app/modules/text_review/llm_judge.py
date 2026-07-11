@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import time
 from typing import Any
 
@@ -11,7 +11,7 @@ import httpx
 
 from app.core.config.settings import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # DeepSeek 审核 System Prompt
 SYSTEM_PROMPT = """你是一个专业的游戏内容安全审核助手。你的任务是对用户提交的游戏相关内容进行合规性审核。

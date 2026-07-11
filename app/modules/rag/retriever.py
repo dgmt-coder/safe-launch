@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 
 from app.core.config.settings import settings
 from app.modules.rag.embedding import OpenAIEmbedding
 from app.modules.rag.qdrant_client import QdrantManager
 from app.schemas.rag import RegulationHit
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class RagRetriever:
