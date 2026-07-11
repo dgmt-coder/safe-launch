@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - safe-launch{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-2xl font-bold text-white mb-2">📊 审核仪表盘</h1>
+    <p class="text-gray-400">内容审核系统运行概览</p>
+</div>
+
+<!-- 统计卡片 -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="card">
+        <div class="text-3xl font-bold text-indigo-400">{{ total_records }}</div>
+        <div class="text-sm text-gray-400 mt-1">总审核记录</div>
+    </div>
+    <div class="card">
+        <div class="text-3xl font-bold text-green-400">{{ by_status.get('completed', 0) }}</div>
+        <div class="text-sm text-gray-400 mt-1">已完成</div>
+    </div>
+    <div class="card">
+        <div class="text-3xl font-bold text-yellow-400">{{ by_status.get('pending', 0) + by_status.get('processing', 0) }}</div>
+        <div class="text-sm text-gray-400 mt-1">处理中/待处理</div>
+    </div>
+    <div class="card">
+        <div class="text-3xl font-bold text-orange-400">{{ "%.1f"|format(degraded_rate) }}%</div>
+        <div class="text-sm text-gray-400 mt-1">降级率</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- 审核状态分布 -->
+    <div class="card">
+        <h2 class="text-lg font-semibold text-white mb-4">审核状态分布</h2>
+        {% if by_status %}
+        <div class="space-y-3">
+            {% for status, count in by_status.items() %}
+            <div class="flex items-center justify-between">
+                <span class="text-gray-300">
+                    {% if status == 'pending' %}⏳ 待审核
+                    {% elif status == 'processing' %}🔄 审核中
+                    {% elif status == 'completed' %}✅ 已完成
+                    {% elif status == 'failed' %}❌ 失败
+                    {% elif status == 'degraded' %}⚠️ 降级
+                    {% else %}{{ status }}
+                    {% endif %}
+                </span>
+                <span class="text-white font-semibold">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-500 text-center py-8">暂无审核数据</p>
+        {% endif %}
+    </div>
+
+    <!-- 审核维度分布 -->
+    <div class="card">
+        <h2 class="text-lg font-semibold text-white mb-4">审核维度分布</h2>
+        {% if by_dimension %}
+        <div class="space-y-3">
+            {% for dim, count in by_dimension.items() %}
+            <div class="flex items-center justify-between">
+                <span class="text-gray-300">
+                    {% if dim == 'legal' %}⚖️ 法律法规红线
+                    {% elif dim == 'game_principles' %}🎮 游戏基本原则
+                    {% elif dim == 'compliance' %}📋 游戏内合规
+                    {% elif dim == 'art_assets' %}🎨 美术资源
+                    {% else %}{{ dim }}
+                    {% endif %}
+                </span>
+                <span class="text-white font-semibold">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-500 text-center py-8">暂无数据</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 风险等级分布 -->
+{% if by_risk_level %}
+<div class="card mb-8">
+    <h2 class="text-lg font-semibold text-white mb-4">风险等级分布</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {% for level, count in by_risk_level.items() %}
+        <div class="text-center p-4 rounded-lg bg-gray-700/50">
+            <div class="text-2xl font-bold risk-{{ level }}">{{ count }}</div>
+            <div class="text-sm text-gray-400 mt-1">{{ level.upper() }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- 最近审核记录 -->
+<div class="card">
+    <h2 class="text-lg font-semibold text-white mb-4">最近审核记录</h2>
+    {% if recent_records %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-400 border-b border-gray-700">
+                    <th class="pb-3 pr-4">内容摘要</th>
+                    <th class="pb-3 pr-4">维度</th>
+                    <th class="pb-3 pr-4">状态</th>
+                    <th class="pb-3 pr-4">风险</th>
+                    <th class="pb-3">时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recent_records %}
+                <tr class="tr-row" onclick="location.href='/history?record_id={{ r.id }}'">
+                    <td class="py-3 pr-4 text-gray-300 max-w-xs truncate">
+                        {{ r.content[:50] }}{% if r.content|length > 50 %}...{% endif %}
+                    </td>
+                    <td class="py-3 pr-4 text-gray-400">{{ r.review_dimension }}</td>
+                    <td class="py-3 pr-4">
+                        {% if r.status == 'pending' %}⏳ 待审核
+                        {% elif r.status == 'processing' %}🔄 审核中
+                        {% elif r.status == 'completed' %}✅ 已完成
+                        {% elif r.status == 'failed' %}❌ 失败
+                        {% elif r.status == 'degraded' %}⚠️ 降级
+                        {% else %}{{ r.status }}{% endif %}
+                    </td>
+                    <td class="py-3 pr-4">
+                        {% if r.risk_level %}
+                        <span class="risk-{{ r.risk_level }} font-semibold">{{ r.risk_level.upper() }}</span>
+                        {% else %}
+                        <span class="text-gray-500">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 text-gray-500 text-xs">{{ r.created_at.strftime('%m-%d %H:%M') if r.created_at else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-gray-500 text-center py-8">暂无审核记录</p>
+    {% endif %}
+</div>
+{% endblock %}
