@@ -104,7 +104,7 @@ safe-launch/
 ### 环境要求
 
 - Python >= 3.12
-- uv (已安装在 `E:\software_best\miniconda3\envs\py312\Scripts\uv`)
+- uv
 - PostgreSQL 14+ (需创建数据库 `safe_launch`)
 - Redis (可选，默认 localhost)
 - Qdrant (可选，默认 localhost)

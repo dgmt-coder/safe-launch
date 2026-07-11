@@ -8,8 +8,11 @@ echo "  safe-launch 游戏预发布内容审核系统"
 echo "========================================"
 echo ""
 
-# 设置 uv 路径
-UV="E:/software_best/miniconda3/envs/py312/Scripts/uv"
+# 检查 uv
+if ! command -v uv &> /dev/null; then
+    echo "ERROR: uv not found in PATH, please install uv first"
+    exit 1
+fi
 
 # 检查 .env
 if [ ! -f ".env" ]; then
@@ -20,13 +23,13 @@ fi
 
 # 同步依赖
 echo "[1/3] Syncing dependencies..."
-$UV sync 2>&1
+uv sync 2>&1
 
 # 数据库迁移
 echo "[2/3] Running database migrations..."
-$UV run alembic upgrade head
+uv run alembic upgrade head
 
 # 启动服务
 echo "[3/3] Starting server..."
 echo ""
-$UV run litestar run --app app.main:app --reload --host 0.0.0.0 --port 8000
+uv run litestar run --app app.main:app --reload --host 0.0.0.0 --port 8000

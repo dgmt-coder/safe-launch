@@ -9,9 +9,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # 检查 uv
-$uv = "E:\software_best\miniconda3\envs\py312\Scripts\uv.exe"
-if (-not (Test-Path $uv)) {
-    Write-Host "ERROR: uv not found at $uv" -ForegroundColor Red
+$uv = Get-Command uv.exe -ErrorAction SilentlyContinue
+if (-not $uv) {
+    Write-Host "ERROR: uv not found in PATH, please install uv first" -ForegroundColor Red
     exit 1
 }
 
