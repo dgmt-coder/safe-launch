@@ -16,12 +16,13 @@ from app.api.controllers.rag import RagController
 from app.api.controllers.text_review import TextReviewController
 from app.core.config.settings import settings
 from app.core.database import close_db_engine, get_db_session
+from app.core.exception_handlers import get_exception_handlers
 from app.core.redis import close_redis
 from app.web.controllers.pages import PagesController
 
 
 def create_app() -> Litestar:
-    """创建 Litestar 应用实例 — 注册所有 Controller 和依赖注入."""
+    """创建 Litestar 应用实例 — 注册所有 Controller、依赖注入和异常处理器."""
     return Litestar(
         route_handlers=[
             PagesController,
@@ -38,6 +39,7 @@ def create_app() -> Litestar:
             directory=Path(__file__).parent / "web" / "templates",
             engine=JinjaTemplateEngine,
         ),
+        exception_handlers=get_exception_handlers(),
         on_startup=[_on_startup],
         on_shutdown=[_on_shutdown],
         debug=settings.DEBUG,
