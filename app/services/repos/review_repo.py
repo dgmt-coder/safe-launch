@@ -44,6 +44,7 @@ class ReviewRepository:
         )
         self._session.add(record)
         await self._session.flush()
+        await self._session.refresh(record)
         return record
 
     async def list(
@@ -85,6 +86,7 @@ class ReviewRepository:
             if hasattr(record, key):
                 setattr(record, key, value)
         await self._session.flush()
+        await self._session.refresh(record)
         return record
 
     async def delete(self, record_id: uuid.UUID) -> None:
