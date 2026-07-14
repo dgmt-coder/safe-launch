@@ -1,4 +1,4 @@
-"""统一异常处理中间件 — 通过 ASGI middleware 捕获所有异常，记录堆栈，返回标准 JSON 响应."""
+"""统一异常处理 — ASGI middleware + Litestar 异常处理器，双层兜底，所有异常均记录堆栈并返回 JSON."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import traceback
 from typing import Any
 
 import structlog
+from litestar import Request, Response
+from litestar.exceptions import HTTPException, ValidationException
 from litestar.status_codes import (
     HTTP_401_UNAUTHORIZED,
     HTTP_404_NOT_FOUND,
@@ -90,9 +92,62 @@ def _log_exception(exc: Exception, path: str, status_code: int) -> None:
             "http_exception",
             exception_type=type(exc).__name__,
             exception=str(exc),
+            traceback=_format_traceback(exc),
             path=path,
             status_code=status_code,
         )
+
+
+# ---------------------------------------------------------------------------
+# Litestar 异常处理器 — 在 Litestar 内部层面拦截异常并记录堆栈
+# 解决 ASGI middleware 无法捕获 Litestar 内置异常（如 ValidationException）的问题
+# ---------------------------------------------------------------------------
+
+
+def _build_error_response(status_code: int, error_code: str, detail: str) -> Response[Any]:
+    """构建标准 JSON 错误响应."""
+    return Response(
+        content=json.dumps(
+            {"detail": detail, "code": error_code},
+            ensure_ascii=False,
+        ).encode("utf-8"),
+        status_code=status_code,
+        media_type="application/json; charset=utf-8",
+    )
+
+
+def _handle_validation_exception(
+    _request: Request[Any, Any, Any],
+    exc: ValidationException,
+) -> Response[Any]:
+    """处理 ValidationException（Pydantic 校验失败等）— 记录完整堆栈."""
+    _log_exception(exc, _request.url.path, exc.status_code)
+    return _build_error_response(
+        exc.status_code,
+        "VALIDATION_ERROR",
+        str(exc.detail),
+    )
+
+
+def _handle_general_exception(
+    _request: Request[Any, Any, Any],
+    exc: Exception,
+) -> Response[Any]:
+    """兜底异常处理器 — 处理所有未匹配的异常，记录完整堆栈."""
+    status_code, error_code, detail = _lookup(exc)
+    _log_exception(exc, _request.url.path, status_code)
+    return _build_error_response(status_code, error_code, detail)
+
+
+def create_exception_handlers() -> dict[type[Exception], Any]:
+    """创建 Litestar 层异常处理器映射.
+
+    按 MRO 匹配，ValidationException 优先于 Exception。
+    """
+    return {
+        ValidationException: _handle_validation_exception,
+        Exception: _handle_general_exception,
+    }
 
 
 class ExceptionHandlerMiddleware:
