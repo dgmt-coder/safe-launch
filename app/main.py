@@ -10,6 +10,8 @@ from litestar.middleware.base import DefineMiddleware
 from litestar.plugins.jinja import JinjaTemplateEngine
 from litestar.template import TemplateConfig
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.controllers.health import HealthController
 from app.api.controllers.history import HistoryController
 from app.api.controllers.image_review import ImageReviewController
@@ -22,7 +24,13 @@ from app.core.exception_handlers import (
     create_exception_handlers,
 )
 from app.core.redis import close_redis
+from app.services.review_service import ReviewService
 from app.web.controllers.pages import PagesController
+
+
+async def get_review_service(db_session: AsyncSession) -> ReviewService:
+    """创建 ReviewService 依赖 — 注入数据库会话."""
+    return ReviewService(db_session)
 
 
 def create_app() -> Litestar:
@@ -38,6 +46,7 @@ def create_app() -> Litestar:
         ],
         dependencies={
             "db_session": Provide(get_db_session),
+            "review_service": Provide(get_review_service),
         },
         template_config=TemplateConfig(
             directory=Path(__file__).parent / "web" / "templates",
