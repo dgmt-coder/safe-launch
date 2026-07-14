@@ -28,9 +28,51 @@ from app.services.review_service import ReviewService
 from app.web.controllers.pages import PagesController
 
 
+# ---------------------------------------------------------------------------
+# 审核层组件 — 模块级懒加载单例，避免每次请求重复创建
+# ---------------------------------------------------------------------------
+
+_keyword_matcher = None
+_rag_retriever = None
+_llm_judge = None
+
+
+def _get_keyword_matcher():
+    """L1 关键词匹配器 — 懒加载单例."""
+    global _keyword_matcher
+    if _keyword_matcher is None:
+        from app.modules.text_review.keyword import KeywordMatcher
+        _keyword_matcher = KeywordMatcher()
+        _keyword_matcher.load()
+    return _keyword_matcher
+
+
+def _get_rag_retriever():
+    """L2 RAG 检索器 — 懒加载单例."""
+    global _rag_retriever
+    if _rag_retriever is None:
+        from app.modules.rag.retriever import RagRetriever
+        _rag_retriever = RagRetriever()
+    return _rag_retriever
+
+
+def _get_llm_judge():
+    """L3 LLM 判定器 — 懒加载单例."""
+    global _llm_judge
+    if _llm_judge is None:
+        from app.modules.text_review.llm_judge import DeepSeekAnalyzer
+        _llm_judge = DeepSeekAnalyzer()
+    return _llm_judge
+
+
 async def get_review_service(db_session: AsyncSession) -> ReviewService:
-    """创建 ReviewService 依赖 — 注入数据库会话."""
-    return ReviewService(db_session)
+    """创建 ReviewService 依赖 — 注入数据库会话 + 三层检测组件."""
+    return ReviewService(
+        db_session,
+        keyword_matcher=_get_keyword_matcher(),
+        rag_retriever=_get_rag_retriever(),
+        llm_judge=_get_llm_judge(),
+    )
 
 
 def create_app() -> Litestar:
