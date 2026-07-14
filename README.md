@@ -71,8 +71,14 @@ safe-launch/
 │   │   ├── rag/             # Embedding + Qdrant + 检索器
 │   │   └── image_review/    # 图片校验 + 外部检测服务
 │   └── services/            # 业务编排 + Repository
-├── tests/                   # 36 个测试 (unit + integration)
-│   ├── unit/                # Schema / Module / Service 单测
+├── tests/                   # 73+ 个测试 (unit + integration)
+│   ├── unit/
+│   │   ├── test_api/        # API 端点契约测试
+│   │   ├── test_core/       # 异常处理 / 中间件测试
+│   │   ├── test_modules/    # 关键词 / LLM / 图片校验
+│   │   ├── test_schemas/    # Pydantic Schema 校验
+│   │   ├── test_services/   # ReviewService 编排逻辑
+│   │   └── test_web/        # 管理页面模板测试
 │   ├── integration/         # API / Database 集成测试
 │   └── factories/           # 测试数据工厂
 ├── data/
@@ -177,8 +183,31 @@ uv run pytest tests/unit/ -v
 # 运行并生成覆盖率报告
 uv run pytest tests/ -v --cov=app --cov-report=html
 
-# 仅运行指定模块测试
+# ── 按模块运行 ──
+
+# API 端点测试
+uv run pytest tests/unit/test_api/test_text_review.py -v
+
+# 异常处理 / 中间件
+uv run pytest tests/unit/test_core/test_exception_handlers.py -v
+
+# Schema 校验
+uv run pytest tests/unit/test_schemas/test_review.py -v
+
+# 关键词匹配器
 uv run pytest tests/unit/test_modules/test_keyword_matcher.py -v
+
+# LLM 判定
+uv run pytest tests/unit/test_modules/test_llm_judge.py -v
+
+# 图片校验
+uv run pytest tests/unit/test_modules/test_image_validator.py -v
+
+# 管理页面
+uv run pytest tests/unit/test_web/test_pages.py -v
+
+# 集成测试 (Health API)
+uv run pytest tests/integration/test_api/test_health.py -v
 
 # 代码风格检查
 uv run ruff check app/
@@ -202,7 +231,11 @@ uv run python -c "from app.main import create_app; app=create_app(); print('App 
 |------|------|
 | 安装依赖 | `uv sync && uv sync --extra dev` |
 | 启动服务 | `uv run litestar run --app app.main:app --reload` |
-| 运行测试 | `uv run pytest tests/ -v` |
+| 运行全部测试 | `uv run pytest tests/ -v` |
+| 单元测试 | `uv run pytest tests/unit/ -v` |
+| API 端点测试 | `uv run pytest tests/unit/test_api/ -v` |
+| 异常处理测试 | `uv run pytest tests/unit/test_core/ -v` |
+| 单个测试文件 | `uv run pytest tests/unit/test_api/test_text_review.py -v` |
 | 覆盖率报告 | `uv run pytest tests/ -v --cov=app --cov-report=html` |
 | Lint 检查 | `uv run ruff check app/` |
 | Lint 自动修复 | `uv run ruff check app/ --fix` |
