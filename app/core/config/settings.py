@@ -46,10 +46,10 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str | None = None
     QDRANT_COLLECTION_NAME: str = "game_regulations"
 
-    # --- OpenAI Embedding ---
+    # --- Embedding (OpenAI / Ollama 兼容) ---
     OPENAI_API_KEY: str = ""
-    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_BASE_URL: str = "http://localhost:11434/v1"
+    OPENAI_EMBEDDING_MODEL: str = "qwen3-embedding:0.6b"
 
     # --- 图片审核私有服务 ---
     IMAGE_REVIEW_API_URL: str | None = None

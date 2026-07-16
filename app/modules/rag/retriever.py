@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 
 from app.core.config.settings import settings
-from app.modules.rag.embedding import OpenAIEmbedding
+from app.modules.rag.embedding import EmbeddingService
 from app.modules.rag.qdrant_client import QdrantManager
 from app.schemas.rag import RegulationHit
 
@@ -17,10 +17,10 @@ class RagRetriever:
 
     def __init__(
         self,
-        embedding: OpenAIEmbedding | None = None,
+        embedding: EmbeddingService | None = None,
         qdrant: QdrantManager | None = None,
     ) -> None:
-        self._embedding = embedding or OpenAIEmbedding()
+        self._embedding = embedding or EmbeddingService()
         self._qdrant = qdrant or QdrantManager()
 
     async def search(self, query: str, top_k: int = 5) -> list[RegulationHit]:
@@ -34,7 +34,7 @@ class RagRetriever:
             相关法规命中的 RegulationHit 列表.
         """
         if not self._embedding.is_available:
-            logger.warning("OpenAI Embedding 未配置，RAG 检索不可用")
+            logger.warning("Embedding 服务未配置，RAG 检索不可用")
             return []
 
         top_k = min(top_k, settings.L2_RAG_TOP_K)

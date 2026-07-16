@@ -32,7 +32,7 @@ class QdrantManager:
                 self._client = QdrantClient(url=settings.QDRANT_URL)
         return self._client
 
-    async def ensure_collection(self, vector_size: int = 1536) -> None:
+    async def ensure_collection(self, vector_size: int = 1024) -> None:
         """确保集合存在，不存在则创建."""
         try:
             self.client.get_collection(self._collection_name)
