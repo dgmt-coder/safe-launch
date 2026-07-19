@@ -1,4 +1,4 @@
-"""ReviewService — 审核业务编排：三线流水线 + 降级 + 批量并发."""
+"""ReviewService — 审核业务编排：L1 || (L2→L3) 流水线 + 降级 + 批量并发."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from app.core.constants import (
     RiskLevel,
 )
 from app.core.exceptions import DegradedException
+from app.schemas.rag import PrecedentHit
 from app.schemas.review import LayerResult, ReviewCreate, ReviewResponse, ReviewStats
 from app.services.repos.review_repo import ReviewRepository
 
@@ -24,7 +25,10 @@ logger = structlog.get_logger(__name__)
 
 
 class ReviewService:
-    """审核服务 — 编排三层检测流水线."""
+    """审核服务 — 编排 L1 || (L2→L3) 检测流水线.
+
+    L1 (关键词) 独立执行，L2 (判例检索) 结果注入 L3 (LLM) 做 few-shot.
+    """
 
     def __init__(
         self,
@@ -41,45 +45,47 @@ class ReviewService:
         self._llm_judge = llm_judge
 
     async def create_review(self, data: ReviewCreate) -> ReviewResponse:
-        """执行单条审核 — L1/L2/L3 并发执行，聚合结果."""
+        """执行单条审核 — L1 与 (L2→L3) 并行，L2 判例注入 L3."""
         start_time = time.perf_counter()
 
         # 1. 创建记录 (status=processing)
         record = await self._repo.create(data)
 
-        # 2. 并发执行三层检测
+        # 2. L1 与 L2→L3 链并行
         l1_coro = self._run_keyword(data.content)
-        l2_coro = self._run_rag(data.content)
-        l3_coro = self._run_llm(data.content)
+        l23_coro = self._chain_l2_l3(data.content, data.review_dimension)
 
-        l1_result, l2_result, l3_result = await asyncio.gather(
-            l1_coro, l2_coro, l3_coro, return_exceptions=True
+        (l1_result, (l2_result, l3_result)) = await asyncio.gather(
+            l1_coro, l23_coro, return_exceptions=True,
         )
 
-        # 3. 聚合结果
+        # 3. 规范化异常
+        l1_ok = not isinstance(l1_result, Exception)
+        l2_ok = not isinstance(l2_result, Exception) and l2_result is not None
+        l3_ok = not isinstance(l3_result, Exception) and l3_result is not None
+
         layers: list[LayerResult] = []
         skipped: list[str] = []
-        l1_ok = not isinstance(l1_result, Exception)
-        l2_ok = not isinstance(l2_result, Exception)
-        l3_ok = not isinstance(l3_result, Exception)
 
         if l1_ok:
-            layers.append(l1_result)  # type: ignore[arg-type]
+            layers.append(l1_result)
         else:
             skipped.append(LAYER_KEYWORD)
 
         if l2_ok:
-            layers.append(l2_result)  # type: ignore[arg-type]
+            layers.append(l2_result)
         else:
             skipped.append(LAYER_RAG)
 
         if l3_ok:
-            layers.append(l3_result)  # type: ignore[arg-type]
+            layers.append(l3_result)
         else:
             skipped.append(LAYER_LLM)
 
-        # 4. 判断最终结论
-        is_violation, violation_type, confidence, risk_level, reasoning = self._aggregate(layers)
+        # 4. 聚合
+        is_violation, violation_type, confidence, risk_level, reasoning = (
+            self._aggregate(layers)
+        )
 
         # 5. 全部跳过则失败
         if not layers:
@@ -195,6 +201,64 @@ class ReviewService:
     # 私有方法
     # ------------------------------------------------------------------
 
+    async def _chain_l2_l3(
+        self, content: str, review_dimension: str
+    ) -> tuple[LayerResult | None, LayerResult | None]:
+        """L2 → L3 串联：先检索判例，再注入 LLM 做 few-shot 判定.
+
+        Returns:
+            (l2_result, l3_result) — 任一失败时为 None.
+        """
+        # ── L2: 判例检索 ──
+        t0 = time.perf_counter()
+        try:
+            if self._rag_retriever is None:
+                raise RuntimeError("RagRetriever 未注入")
+            precedents = await self._rag_retriever.search(
+                content, review_dimension=review_dimension,
+            )
+        except Exception as e:
+            logger.warning(f"L2 RAG 失败，跳过 L3: {e}")
+            return None, None   # RAG 失败 → L3 不执行
+
+        l2_elapsed = int((time.perf_counter() - t0) * 1000)
+
+        l2_result: LayerResult | None = None
+        if precedents:
+            l2_result = LayerResult(
+                layer=LAYER_RAG,
+                is_violation=None,
+                details={
+                    "precedents": [h.model_dump() for h in precedents],
+                    "count": len(precedents),
+                },
+                processing_time_ms=l2_elapsed,
+            )
+
+        # ── L3: LLM 深度判定（带判例 few-shot）──
+        t0 = time.perf_counter()
+        try:
+            if self._llm_judge is None:
+                raise RuntimeError("LLMJudge 未注入")
+            llm_raw = await self._llm_judge.analyze(
+                content,
+                precedents=precedents if precedents else None,
+                review_dimension=review_dimension,
+            )
+        except Exception as e:
+            logger.warning(f"L3 LLM 失败: {e}")
+            return l2_result, None
+
+        l3_elapsed = int((time.perf_counter() - t0) * 1000)
+        l3_result = LayerResult(
+            layer=LAYER_LLM,
+            is_violation=llm_raw.get("is_violation"),
+            details=llm_raw,
+            processing_time_ms=l3_elapsed,
+        )
+
+        return l2_result, l3_result
+
     async def _run_keyword(self, content: str) -> LayerResult:
         """L1: 关键词匹配."""
         t0 = time.perf_counter()
@@ -210,40 +274,12 @@ class ReviewService:
             processing_time_ms=elapsed,
         )
 
-    async def _run_rag(self, content: str) -> LayerResult:
-        """L2: RAG 法规检索."""
-        t0 = time.perf_counter()
-        if self._rag_retriever is None:
-            raise RuntimeError("RagRetriever 未注入")
-        hits = await self._rag_retriever.search(content)
-        elapsed = int((time.perf_counter() - t0) * 1000)
-        return LayerResult(
-            layer=LAYER_RAG,
-            is_violation=None,  # RAG 仅提供证据，不做判定
-            details={"regulations": [h.model_dump() for h in hits], "count": len(hits)},
-            processing_time_ms=elapsed,
-        )
-
-    async def _run_llm(self, content: str) -> LayerResult:
-        """L3: LLM 深度判定."""
-        t0 = time.perf_counter()
-        if self._llm_judge is None:
-            raise RuntimeError("LLMJudge 未注入")
-        result = await self._llm_judge.analyze(content)
-        elapsed = int((time.perf_counter() - t0) * 1000)
-        return LayerResult(
-            layer=LAYER_LLM,
-            is_violation=result.get("is_violation"),
-            details=result,
-            processing_time_ms=elapsed,
-        )
-
     @staticmethod
     def _aggregate(
         layers: list[LayerResult],
     ) -> tuple[bool | None, str | None, float | None, str | None, str | None]:
         """聚合各层结果为最终判定."""
-        # L3 (LLM) 优先级最高
+        # L3 (LLM) 优先级最高 — 已包含判例 few-shot 信息
         llm_layer = next((l for l in layers if l.layer == LAYER_LLM), None)
         if llm_layer and llm_layer.is_violation is not None:
             risk_level = (

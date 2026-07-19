@@ -6,6 +6,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.schemas.rag import PrecedentHit
+
+
+def _build_mock_precedent(**overrides) -> PrecedentHit:
+    """构建 Mock 判例."""
+    defaults = {
+        "content": "测试判例内容",
+        "is_violation": False,
+        "violation_type": None,
+        "severity": "low",
+        "reasoning": "内容合规",
+        "review_dimension": "legal",
+        "tags": [],
+        "similarity": 0.92,
+        "source": "测试审查人",
+    }
+    defaults.update(overrides)
+    return PrecedentHit(**defaults)
+
 
 @pytest.fixture
 def mock_review_repo():
@@ -35,9 +54,9 @@ def mock_keyword_matcher():
 
 @pytest.fixture
 def mock_rag_retriever():
-    """Mock RagRetriever."""
+    """Mock RagRetriever — 默认返回一条合规判例."""
     retriever = AsyncMock()
-    retriever.search = AsyncMock(return_value=[])
+    retriever.search = AsyncMock(return_value=[_build_mock_precedent()])
     return retriever
 
 

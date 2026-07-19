@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # --- Qdrant 向量数据库 ---
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str | None = None
-    QDRANT_COLLECTION_NAME: str = "game_regulations"
+    QDRANT_COLLECTION_NAME: str = "game_precedents"
 
     # --- Embedding (OpenAI / Ollama 兼容) ---
     OPENAI_API_KEY: str = ""

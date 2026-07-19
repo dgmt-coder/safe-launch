@@ -1,4 +1,4 @@
-"""RAG 检索器 — 编排 Embedding + Qdrant 检索."""
+"""RAG 检索器 — 编排 Embedding + Qdrant 判例检索."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import structlog
 from app.core.config.settings import settings
 from app.modules.rag.embedding import EmbeddingService
 from app.modules.rag.qdrant_client import QdrantManager
-from app.schemas.rag import RegulationHit
+from app.schemas.rag import PrecedentHit
 
 logger = structlog.get_logger(__name__)
 
 
 class RagRetriever:
-    """RAG 检索器 — 接收查询文本，返回相关法规."""
+    """RAG 检索器 — 接收查询文本，返回相似判例供 LLM 做 few-shot 推理."""
 
     def __init__(
         self,
@@ -23,15 +23,22 @@ class RagRetriever:
         self._embedding = embedding or EmbeddingService()
         self._qdrant = qdrant or QdrantManager()
 
-    async def search(self, query: str, top_k: int = 5) -> list[RegulationHit]:
-        """检索相关法规.
+    async def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        review_dimension: str | None = None,
+    ) -> list[PrecedentHit]:
+        """检索相似判例.
 
         Args:
             query: 查询文本.
             top_k: 返回数量.
+            review_dimension: 可选，按审核维度过滤判例.
 
         Returns:
-            相关法规命中的 RegulationHit 列表.
+            PrecedentHit 列表，适合直接注入 LLM few-shot prompt.
         """
         if not self._embedding.is_available:
             logger.warning("Embedding 服务未配置，RAG 检索不可用")
@@ -40,19 +47,24 @@ class RagRetriever:
         top_k = min(top_k, settings.L2_RAG_TOP_K)
 
         try:
-            # 1. 查询向量化
             vector = await self._embedding.embed(query)
+            raw_hits = await self._qdrant.search(
+                vector,
+                limit=top_k,
+                review_dimension=review_dimension,
+            )
 
-            # 2. Qdrant 相似度搜索
-            raw_hits = await self._qdrant.search(vector, limit=top_k)
-
-            # 3. 转换为 RegulationHit
             return [
-                RegulationHit(
+                PrecedentHit(
                     content=h["content"],
-                    source=h.get("source"),
+                    is_violation=h["is_violation"],
+                    violation_type=h.get("violation_type"),
+                    severity=h.get("severity"),
+                    reasoning=h.get("reasoning"),
+                    review_dimension=h.get("review_dimension"),
+                    tags=h.get("tags", []),
                     similarity=h["similarity"],
-                    metadata=h.get("metadata", {}),
+                    source=h.get("reviewer") or h.get("source"),
                 )
                 for h in raw_hits
             ]
