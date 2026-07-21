@@ -91,7 +91,7 @@ class QdrantManager:
         *,
         limit: int = 5,
         review_dimension: str | None = None,
-        min_similarity: float = 0.6,
+        min_similarity: float = 0.35,
     ) -> list[dict]:
         """正反例平衡检索 — 违规/合规各取一半，保证 few-shot 多样性.
 

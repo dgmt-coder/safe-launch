@@ -29,6 +29,7 @@ class RagRetriever:
         *,
         top_k: int = 5,
         review_dimension: str | None = None,
+        min_similarity: float = 0.35,
     ) -> list[PrecedentHit]:
         """检索相似判例.
 
@@ -36,6 +37,7 @@ class RagRetriever:
             query: 查询文本.
             top_k: 返回数量.
             review_dimension: 可选，按审核维度过滤判例.
+            min_similarity: 相似度阈值，低于此值不返回.
 
         Returns:
             PrecedentHit 列表，适合直接注入 LLM few-shot prompt.
@@ -52,6 +54,7 @@ class RagRetriever:
                 vector,
                 limit=top_k,
                 review_dimension=review_dimension,
+                min_similarity=min_similarity,
             )
 
             return [
