@@ -11,6 +11,7 @@ from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams
 
 from app.core.config.settings import settings
+from app.modules.rag.reranker import rerank
 
 logger = structlog.get_logger(__name__)
 
@@ -88,25 +89,31 @@ class QdrantManager:
     async def search(
         self,
         vector: list[float],
+        query: str = "",
         *,
         limit: int = 5,
+        candidate_multiplier: int = 6,
         review_dimension: str | None = None,
-        min_similarity: float = 0.35,
+        min_similarity: float = 0.2,
+        rerank_alpha: float = 0.5,
     ) -> list[dict]:
-        """正反例平衡检索 — 违规/合规各取一半，保证 few-shot 多样性.
+        """两阶段检索 — 粗筛大量候选 + keyword/向量混合精排.
 
         Args:
             vector: 查询向量.
-            limit: 总返回数量.
+            query: 原始查询文本，用于 rerank 阶段关键词匹配.
+            limit: 最终返回数量.
+            candidate_multiplier: 粗筛阶段取 limit * candidate_multiplier 个候选.
             review_dimension: 可选，按审核维度过滤.
-            min_similarity: 相似度阈值，低于此值不返回.
+            min_similarity: 粗筛相似度阈值（较低，保证召回).
+            rerank_alpha: 混合得分中向量权重 (0~1).
 
         Returns:
-            [{id, content, is_violation, violation_type, severity,
-              reasoning, review_dimension, tags, reviewer,
-              reviewed_at, similarity, source}]
+            按 hybrid_score 降序的 top-limit 条.
         """
         await self.ensure_collection()
+
+        candidate_limit = limit * candidate_multiplier
 
         base_filter = models.Filter(
             must=[
@@ -123,41 +130,37 @@ class QdrantManager:
                 )
             )
 
-        # 违规与合规各取一半，不足由对方补充
-        violation_limit = limit // 2 + (limit % 2)
-        compliant_limit = limit // 2
+        # 粗筛 — 违规与合规各取一半候选
+        violation_half = candidate_limit // 2 + (candidate_limit % 2)
+        compliant_half = candidate_limit // 2
 
         violation_results = self._query_precedents(
-            vector=vector,
-            limit=violation_limit,
-            base_filter=base_filter,
-            is_violation=True,
+            vector=vector, limit=violation_half,
+            base_filter=base_filter, is_violation=True,
             score_threshold=min_similarity,
         )
-
         compliant_results = self._query_precedents(
-            vector=vector,
-            limit=compliant_limit,
-            base_filter=base_filter,
-            is_violation=False,
+            vector=vector, limit=compliant_half,
+            base_filter=base_filter, is_violation=False,
             score_threshold=min_similarity,
         )
 
-        # 合并、去重 (按 id)、按相似度降序
+        # 合并去重
         seen: set[str] = set()
-        merged: list[dict] = []
-
+        candidates: list[dict] = []
         for hit in sorted(
             list(violation_results.points) + list(compliant_results.points),
-            key=lambda h: h.score,
-            reverse=True,
+            key=lambda h: h.score, reverse=True,
         ):
-            if hit.id in seen or len(merged) >= limit:
+            if hit.id in seen:
                 continue
             seen.add(hit.id)
-            merged.append(self._hit_to_dict(hit))
+            candidates.append(self._hit_to_dict(hit))
 
-        return merged
+        # 精排 — 混合向量 + 关键词重叠
+        ranked = rerank(query, candidates, alpha=rerank_alpha)
+
+        return ranked[:limit]
 
     def _query_precedents(
         self,

@@ -52,6 +52,7 @@ class RagRetriever:
             vector = await self._embedding.embed(query)
             raw_hits = await self._qdrant.search(
                 vector,
+                query=query,
                 limit=top_k,
                 review_dimension=review_dimension,
                 min_similarity=min_similarity,
