@@ -211,6 +211,7 @@ class ReviewService:
         """
         # ── L2: 判例检索 ──
         t0 = time.perf_counter()
+        precedents: list = []
         try:
             if self._rag_retriever is None:
                 raise RuntimeError("RagRetriever 未注入")
@@ -219,21 +220,22 @@ class ReviewService:
             )
         except Exception as e:
             logger.warning(f"L2 RAG 失败，跳过 L3: {e}")
-            return None, None   # RAG 失败 → L3 不执行
+            return None, None   # RAG 异常 → L3 不执行
+
+        if not precedents:
+            logger.warning("L2 无相似判例，跳过 L3")
+            return None, None   # RAG 无结果 → L3 不执行
 
         l2_elapsed = int((time.perf_counter() - t0) * 1000)
-
-        l2_result: LayerResult | None = None
-        if precedents:
-            l2_result = LayerResult(
-                layer=LAYER_RAG,
-                is_violation=None,
-                details={
-                    "precedents": [h.model_dump() for h in precedents],
-                    "count": len(precedents),
-                },
-                processing_time_ms=l2_elapsed,
-            )
+        l2_result = LayerResult(
+            layer=LAYER_RAG,
+            is_violation=None,
+            details={
+                "precedents": [h.model_dump() for h in precedents],
+                "count": len(precedents),
+            },
+            processing_time_ms=l2_elapsed,
+        )
 
         # ── L3: LLM 深度判定（带判例 few-shot）──
         t0 = time.perf_counter()
@@ -242,7 +244,7 @@ class ReviewService:
                 raise RuntimeError("LLMJudge 未注入")
             llm_raw = await self._llm_judge.analyze(
                 content,
-                precedents=precedents if precedents else None,
+                precedents=precedents,
                 review_dimension=review_dimension,
             )
         except Exception as e:
